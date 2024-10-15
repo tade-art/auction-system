@@ -5,4 +5,4 @@ import java.rmi.*;
  */
 public interface IAuction extends Remote {
     public AuctionItem getSpec(int itemID) throws RemoteException;
-    }
+}
