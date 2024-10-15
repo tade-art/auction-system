@@ -16,13 +16,14 @@ public class Client {
 
     // Process to connect to server - gets name and connect on localhost (127.0.0.1)
     try {
-      String name = "Auction Server";
+      String name = "Auction";
       Registry registry = LocateRegistry.getRegistry("localhost");
-      IAuction server = (IAuction) registry.lookup(name);
+      Auction server = (Auction) registry.lookup(name);
 
       // Line where info about AuctionItem object is being gotten from
       AuctionItem toReturn = server.getSpec(n);
-      System.out.println("object returned: " + toReturn.toString());
+      System.out.println("object returned: " + toReturn.itemID + " " + toReturn.name + " " + toReturn.description + " "
+          + toReturn.highestBid);
     } catch (Exception e) {
       System.err.println("Exception:");
       e.printStackTrace();
