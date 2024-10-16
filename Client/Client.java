@@ -7,11 +7,6 @@ import java.rmi.registry.Registry;
 
 public class Client {
   public static void main(String[] args) {
-    if (args.length < 1) {
-      System.out.println("In client");
-      return;
-    }
-
     int n = Integer.parseInt(args[0]);
 
     // Process to connect to server - gets name and connect on localhost (127.0.0.1)
@@ -22,8 +17,10 @@ public class Client {
 
       // Line where info about AuctionItem object is being gotten from
       AuctionItem toReturn = server.getSpec(n);
-      System.out.println("object returned: " + toReturn.itemID + " " + toReturn.name + " " + toReturn.description + " "
-          + toReturn.highestBid);
+      System.out
+          .println("object returned: " + toReturn.itemID + "\nObject Name:" + toReturn.name + "\nObject Description:"
+              + toReturn.description + "\nObject highest bid:"
+              + toReturn.highestBid);
     } catch (Exception e) {
       System.err.println("Exception:");
       e.printStackTrace();

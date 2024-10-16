@@ -14,9 +14,10 @@ public class Server implements Auction {
      */
     public Server() {
         super();
-
-        // Initialize the hardcoded list of AuctionItems
         items = new AuctionItem[3];
+        items[0] = new AuctionItem(1, "Item 1", "Description for item 1", 100);
+        items[1] = new AuctionItem(2, "Item 2", "Description for item 2", 200);
+        items[2] = new AuctionItem(3, "Item 3", "Description for item 3", 300);
     }
 
     public static void main(String[] args) {
