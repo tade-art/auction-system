@@ -1,26 +1,29 @@
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SealedObject;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-
-/*
- * Class that contains client information - connects to server and runs .getSpec()
- */
 
 public class Client {
   public static void main(String[] args) {
     int n = Integer.parseInt(args[0]);
 
-    // Process to connect to server - gets name and connect on localhost (127.0.0.1)
     try {
-      String name = "Auction";
-      Registry registry = LocateRegistry.getRegistry("localhost");
-      Auction server = (Auction) registry.lookup(name);
+      SecretKey aesKey = KeyManager.loadKey();
 
-      // Line where info about AuctionItem object is being gotten from
-      AuctionItem toReturn = server.getSpec(n);
-      System.out
-          .println("object returned: " + toReturn.itemID + "\nObject Name:" + toReturn.name + "\nObject Description:"
-              + toReturn.description + "\nObject highest bid:"
-              + toReturn.highestBid);
+      String name = "Auction";
+      Registry registry = LocateRegistry.getRegistry("localhost", 8080);
+      Auction server = (Auction) registry.lookup(name);
+      SealedObject sealedObject = server.getSpec(n);
+
+      // Decrypt the object
+      Cipher cipher = Cipher.getInstance("AES");
+      cipher.init(Cipher.DECRYPT_MODE, aesKey);
+      AuctionItem decryptedItem = (AuctionItem) sealedObject.getObject(cipher);
+      System.out.println("object returned: " + decryptedItem.itemID +
+          "\nObject Name: " + decryptedItem.name +
+          "\nObject Description: " + decryptedItem.description +
+          "\nObject highest bid: " + decryptedItem.highestBid);
     } catch (Exception e) {
       System.err.println("Exception:");
       e.printStackTrace();
