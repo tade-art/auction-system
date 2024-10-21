@@ -12,7 +12,7 @@ public class Client {
       SecretKey aesKey = KeyManager.loadKey();
 
       String name = "Auction";
-      Registry registry = LocateRegistry.getRegistry("localhost", 8080);
+      Registry registry = LocateRegistry.getRegistry("localhost");
       Auction server = (Auction) registry.lookup(name);
       SealedObject sealedObject = server.getSpec(n);
 

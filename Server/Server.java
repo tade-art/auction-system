@@ -25,7 +25,7 @@ public class Server implements Auction {
             Server s = new Server();
             String name = "Auction";
             Auction stub = (Auction) UnicastRemoteObject.exportObject(s, 0);
-            Registry registry = LocateRegistry.createRegistry(8080);
+            Registry registry = LocateRegistry.getRegistry();
             registry.rebind(name, stub);
             System.out.println("Server ready");
         } catch (Exception e) {

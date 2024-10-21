@@ -1,10 +1,8 @@
 # Mini script to clear all .class files from the directories
 cd Server
 rm *.class
-rm *.dat
 cd ../Client
 rm *.class
-rm *.dat
 cd ..
 rm Submission.zip
 
@@ -22,5 +20,5 @@ cd ../Client
 javac Client.java
 
 # After compilation, zip the entire content (Java files, class files, and shell scripts) into Submission.zip
-#cd ..
-#zip -r Submission.zip Server/* Client/* *.sh
+cd ..
+zip -r Submission.zip Server/* Client/* *.sh
