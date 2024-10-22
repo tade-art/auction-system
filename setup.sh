@@ -21,4 +21,4 @@ javac Client.java
 
 # After compilation, zip the entire content (Java files, class files, and shell scripts) into Submission.zip
 cd ..
-zip -r Submission.zip Server/* Client/* *.sh
+zip -r Submission.zip Server/* Client/* *.sh keys/*

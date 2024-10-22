@@ -20,6 +20,7 @@ public class Client {
       Cipher cipher = Cipher.getInstance("AES");
       cipher.init(Cipher.DECRYPT_MODE, aesKey);
       AuctionItem decryptedItem = (AuctionItem) sealedObject.getObject(cipher);
+
       System.out.println("object returned: " + decryptedItem.itemID +
           "\nObject Name: " + decryptedItem.name +
           "\nObject Description: " + decryptedItem.description +
