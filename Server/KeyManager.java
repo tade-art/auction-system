@@ -7,11 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 public class KeyManager {
-    private static final String KEY_DIRECTORY = "../keys"; // Adjusted path to be outside the Server folder
+    private static final String KEY_DIRECTORY = "../keys";
     private static final String KEY_FILE = KEY_DIRECTORY + "/testKey.aes";
 
     public static void generateAndStoreKey() throws Exception {
-        // Ensure the directory exists
         Files.createDirectories(Paths.get(KEY_DIRECTORY));
 
         KeyGenerator keyGen = KeyGenerator.getInstance("AES");

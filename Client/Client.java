@@ -16,7 +16,6 @@ public class Client {
       Auction server = (Auction) registry.lookup(name);
       SealedObject sealedObject = server.getSpec(n);
 
-      // Decrypt the object
       Cipher cipher = Cipher.getInstance("AES");
       cipher.init(Cipher.DECRYPT_MODE, aesKey);
       AuctionItem decryptedItem = (AuctionItem) sealedObject.getObject(cipher);
