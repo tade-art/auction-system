@@ -11,7 +11,7 @@ public class Server implements Auction {
 
     public Server() throws Exception {
         // KeyManager.generateAndStoreKey();
-        items.add(generateItem(1, "Item 1", "Description 1", 100));
+        // items.add(generateItem(1, "Item 1", "Description 1", 100));
     }
 
     public static void main(String[] args) {
@@ -121,10 +121,8 @@ public class Server implements Auction {
     @Override
     public AuctionItem[] listItems() throws RemoteException {
         try {
-            return (AuctionItem[]) items.toArray();
-        }
-
-        catch (Exception e) {
+            return items.toArray(new AuctionItem[0]);
+        } catch (Exception e) {
             System.err.println("Error in listItems:");
             e.printStackTrace();
         }

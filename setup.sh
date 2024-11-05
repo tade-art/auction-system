@@ -7,4 +7,4 @@ rm *.class
 
 # After compilation, zip the entire content (Java files, class files, and shell scripts) into Submission.zip
 #cd ..
-#zip -r Submission.zip Server/* Client/* *.sh keys/*
+#zip -r Submission.zip *
