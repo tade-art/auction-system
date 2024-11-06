@@ -2,6 +2,7 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
+import java.security.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -52,19 +53,49 @@ public class Server implements Auction {
         return toReturn;
     }
 
+    // -----------------------------------------
+    // ----------NEW FUNCTIONS GO HERE----------
+    // ----------------------------------------
+
     @Override
-    public AuctionItem getSpec(int itemID) throws RemoteException {
-        if (items.get(itemID) != null)
-            return items.get(itemID);
-        return null;
+    public boolean bid(int userID, int itemID, int price, String token) throws RemoteException {
+        try {
+            if (!userIDList.containsKey(userID))
+                return false;
+
+            AuctionItem item = null;
+            for (AuctionItem i : items)
+                if (i.itemID == itemID) {
+                    item = i;
+                    break;
+                }
+
+            if (item == null || price <= item.highestBid || price < 0)
+                return false;
+
+            item.highestBid = price;
+            return true;
+        }
+
+        catch (Exception e) {
+            System.err.println("Error in bid:");
+            e.printStackTrace();
+        }
+        return false;
     }
 
-    // -----------------------------------------------
-    // VVVVV ----- NEW FUNCTIONS GO HERE ----- VVVVVV
-    // -----------------------------------------------
+    @Override
+    public ChallengeInfo challenge(int userID, String clientChallenge) throws RemoteException {
+        throw new UnsupportedOperationException(" method 'challenge'");
+    }
 
     @Override
-    public int register(String email) throws RemoteException {
+    public TokenInfo authenticate(int userID, byte[] signature) throws RemoteException {
+        throw new UnsupportedOperationException("Unimplemented method 'authenticate'");
+    }
+
+    @Override
+    public int register(String email, PublicKey pkey) throws RemoteException {
         try {
             if (userIDList.containsValue(email))
                 return -1;
@@ -87,7 +118,14 @@ public class Server implements Auction {
     }
 
     @Override
-    public int newAuction(int userID, AuctionSaleItem item) throws RemoteException {
+    public AuctionItem getSpec(int userID, int itemID, String token) throws RemoteException {
+        if (items.get(itemID) != null)
+            return items.get(itemID);
+        return null;
+    }
+
+    @Override
+    public int newAuction(int userID, AuctionSaleItem item, String token) throws RemoteException {
         try {
             if (!userIDList.containsKey(userID) || item == null)
                 return -1;
@@ -119,7 +157,7 @@ public class Server implements Auction {
     }
 
     @Override
-    public AuctionItem[] listItems() throws RemoteException {
+    public AuctionItem[] listItems(int userID, String token) throws RemoteException {
         try {
             return items.toArray(new AuctionItem[0]);
         } catch (Exception e) {
@@ -130,7 +168,7 @@ public class Server implements Auction {
     }
 
     @Override
-    public AuctionResult closeAuction(int userID, int itemID) throws RemoteException {
+    public AuctionResult closeAuction(int userID, int itemID, String token) throws RemoteException {
         try {
             if (!userIDList.containsKey(userID))
                 return null;
@@ -151,32 +189,5 @@ public class Server implements Auction {
             e.printStackTrace();
         }
         return null;
-    }
-
-    @Override
-    public boolean bid(int userID, int itemID, int price) throws RemoteException {
-        try {
-            if (!userIDList.containsKey(userID))
-                return false;
-
-            AuctionItem item = null;
-            for (AuctionItem i : items)
-                if (i.itemID == itemID) {
-                    item = i;
-                    break;
-                }
-
-            if (item == null || price <= item.highestBid || price < 0)
-                return false;
-
-            item.highestBid = price;
-            return true;
-        }
-
-        catch (Exception e) {
-            System.err.println("Error in bid:");
-            e.printStackTrace();
-        }
-        return false;
     }
 }
