@@ -1,18 +1,22 @@
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-import java.rmi.server.UnicastRemoteObject;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.rmi.*;
+import java.rmi.registry.*;
+import java.rmi.server.*;
 import java.security.*;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Server implements Auction {
     private ArrayList<AuctionItem> items = new ArrayList<AuctionItem>();
     private HashMap<Integer, String> userIDList = new HashMap<>();
+    private ConcurrentHashMap<Integer, TokenInfo> tokenMap = new ConcurrentHashMap<>();
+    private KeyPair serverKeyPair;
 
     public Server() throws Exception {
-        // KeyManager.generateAndStoreKey();
-        // items.add(generateItem(1, "Item 1", "Description 1", 100));
+        this.serverKeyPair = generateKeyPair();
+        savePublicKey(this.serverKeyPair.getPublic(), "keys/server_public.key");
     }
 
     public static void main(String[] args) {
@@ -28,6 +32,10 @@ public class Server implements Auction {
             e.printStackTrace();
         }
     }
+
+    // ----------------
+    // HELPER FUNCTIONS
+    // ----------------
 
     public AuctionItem generateItem(int itemID, String name, String description, int highestBid) {
         AuctionItem item = new AuctionItem();
@@ -53,12 +61,138 @@ public class Server implements Auction {
         return toReturn;
     }
 
+    public ChallengeInfo generateChallengeInfo(byte[] signedChallenge, String serverChallenge) {
+        ChallengeInfo toReturn = new ChallengeInfo();
+        toReturn.response = signedChallenge;
+        toReturn.serverChallenge = serverChallenge;
+        return toReturn;
+    }
+
+    public TokenInfo generateTokenInfo(String token, long expiryTime) {
+        TokenInfo toReturn = new TokenInfo();
+        toReturn.token = token;
+        toReturn.expiryTime = expiryTime;
+        return toReturn;
+    }
+
     // -----------------------------------------
     // ----------NEW FUNCTIONS GO HERE----------
-    // ----------------------------------------
+    // -----------------------------------------
+
+    private KeyPair generateKeyPair() throws NoSuchAlgorithmException {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        return keyGen.generateKeyPair();
+    }
+
+    private boolean isTokenValid(int userID, String token) {
+        TokenInfo tokenInfo = tokenMap.get(userID);
+        return tokenInfo != null && tokenInfo.token.equals(token) && tokenInfo.expiryTime > System.currentTimeMillis();
+    }
+
+    private void savePublicKey(PublicKey publicKey, String filePath) throws IOException {
+        Files.createDirectories(Paths.get("keys"));
+        try (FileOutputStream fos = new FileOutputStream(filePath)) {
+            fos.write(publicKey.getEncoded());
+        }
+        System.out.println("Public key saved to " + filePath);
+    }
+    //
+    //
+    //
+    //
+    //
+    // -----------------------------------------
+    // ----------FUNCTIONS TO FIX---------------
+    // -----------------------------------------
+
+    @Override
+    public ChallengeInfo challenge(int userID, String clientChallenge) throws RemoteException {
+        if (!userIDList.containsKey(userID)) {
+            System.out.println("User not registered: " + userID);
+            throw new RemoteException("User not registered.");
+        }
+
+        try {
+            Signature signature = Signature.getInstance("SHA256withRSA");
+            signature.initSign(serverKeyPair.getPrivate());
+            signature.update(clientChallenge.getBytes());
+
+            byte[] signedChallenge = signature.sign();
+            String serverChallenge = Integer.toString(userID);
+
+            return generateChallengeInfo(signedChallenge, serverChallenge);
+        }
+
+        catch (Exception e) {
+            System.err.println("Error in challenge generation: " + e.getMessage());
+            throw new RemoteException("Challenge generation failed.", e);
+        }
+    }
+
+    @Override
+    public TokenInfo authenticate(int userID, byte[] clientSignature) throws RemoteException {
+        try {
+            String serverChallenge = Integer.toString(userID);
+            Signature sig = Signature.getInstance("SHA256withRSA");
+            sig.initVerify(serverKeyPair.getPublic());
+            sig.update(serverChallenge.getBytes());
+
+            // AUTHENTICATE METHOD FAILS HERE, CANNOT VERIFY CLIENT SIGNATURE
+            if (sig.verify(clientSignature)) {
+                String token = Base64.getEncoder().encodeToString(("token" + userID).getBytes());
+                long expiryTime = System.currentTimeMillis() + 10000;
+                TokenInfo tokenInfo = generateTokenInfo(token, expiryTime);
+                tokenMap.put(userID, tokenInfo);
+                return tokenInfo;
+            }
+
+            else
+                System.out.println("Signature verification failed for userID: " + userID);
+
+        } catch (Exception e) {
+            System.err.println("Error in authentication: " + e.getMessage());
+            throw new RemoteException("Authentication failed.", e);
+        }
+        return null;
+    }
+
+    // -----------------------------------------------
+    // ----------FUNCTIONS TO FIX ABOVE---------------
+    // -----------------------------------------------
+    //
+    //
+    //
+    //
+    //
+
+    @Override
+    public int register(String email, PublicKey pkey) throws RemoteException {
+        System.out.println("Register request received for email: " + email);
+        try {
+            if (userIDList.containsValue(email))
+                return -1;
+
+            int userID = (int) (Math.random() * 10000);
+            while (userIDList.containsKey(userID))
+                userID = (int) (Math.random() * 10000);
+
+            userIDList.put(userID, email);
+            return userID;
+        }
+
+        catch (Exception e) {
+            System.err.println("Error with registering:");
+            e.printStackTrace();
+        }
+        return -1;
+    }
 
     @Override
     public boolean bid(int userID, int itemID, int price, String token) throws RemoteException {
+        if (!isTokenValid(userID, token))
+            return false;
+
         try {
             if (!userIDList.containsKey(userID))
                 return false;
@@ -85,40 +219,9 @@ public class Server implements Auction {
     }
 
     @Override
-    public ChallengeInfo challenge(int userID, String clientChallenge) throws RemoteException {
-        throw new UnsupportedOperationException(" method 'challenge'");
-    }
-
-    @Override
-    public TokenInfo authenticate(int userID, byte[] signature) throws RemoteException {
-        throw new UnsupportedOperationException("Unimplemented method 'authenticate'");
-    }
-
-    @Override
-    public int register(String email, PublicKey pkey) throws RemoteException {
-        try {
-            if (userIDList.containsValue(email))
-                return -1;
-
-            else {
-                int userID = 0;
-                while (userID == 0 || userIDList.containsKey(userID))
-                    userID = (int) (Math.random() * 10000);
-
-                userIDList.put(userID, email);
-                return userID;
-            }
-        }
-
-        catch (Exception e) {
-            System.err.println("Error with registering:");
-            e.printStackTrace();
-        }
-        return -1;
-    }
-
-    @Override
     public AuctionItem getSpec(int userID, int itemID, String token) throws RemoteException {
+        if (!isTokenValid(userID, token))
+            return null;
         if (items.get(itemID) != null)
             return items.get(itemID);
         return null;
@@ -126,6 +229,9 @@ public class Server implements Auction {
 
     @Override
     public int newAuction(int userID, AuctionSaleItem item, String token) throws RemoteException {
+        if (!isTokenValid(userID, token))
+            return -1;
+
         try {
             if (!userIDList.containsKey(userID) || item == null)
                 return -1;
@@ -158,9 +264,14 @@ public class Server implements Auction {
 
     @Override
     public AuctionItem[] listItems(int userID, String token) throws RemoteException {
+        if (!isTokenValid(userID, token))
+            return new AuctionItem[0];
+
         try {
             return items.toArray(new AuctionItem[0]);
-        } catch (Exception e) {
+        }
+
+        catch (Exception e) {
             System.err.println("Error in listItems:");
             e.printStackTrace();
         }
@@ -169,6 +280,9 @@ public class Server implements Auction {
 
     @Override
     public AuctionResult closeAuction(int userID, int itemID, String token) throws RemoteException {
+        if (!isTokenValid(userID, token))
+            return null;
+
         try {
             if (!userIDList.containsKey(userID))
                 return null;
