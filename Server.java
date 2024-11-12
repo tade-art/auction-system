@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Server implements Auction {
-    private HashMap<Integer, AuctionItem> items = new HashMap<>();
+    private HashMap<Integer, List<AuctionItem>> items = new HashMap<>();
     private HashMap<Integer, String> userIDList = new HashMap<>();
     private HashMap<Integer, PublicKey> userKeys = new HashMap<>();
     private ConcurrentHashMap<Integer, TokenInfo> tokenMap = new ConcurrentHashMap<>();
@@ -173,11 +173,16 @@ public class Server implements Auction {
                 return false;
 
             AuctionItem item = null;
-            for (AuctionItem i : items.values())
-                if (i.itemID == itemID) {
-                    item = i;
-                    break;
+            for (List<AuctionItem> itemList : items.values()) {
+                for (AuctionItem i : itemList) {
+                    if (i.itemID == itemID) {
+                        item = i;
+                        break;
+                    }
                 }
+                if (item != null)
+                    break;
+            }
 
             if (item == null || price <= item.highestBid || price < 0)
                 return false;
@@ -195,35 +200,32 @@ public class Server implements Auction {
 
     @Override
     public AuctionItem getSpec(int userID, int itemID, String token) throws RemoteException {
-        if (items.get(itemID) != null)
-            return items.get(itemID);
+        List<AuctionItem> userItems = items.get(userID);
+        if (userItems != null) {
+            for (AuctionItem item : userItems) {
+                if (item.itemID == itemID) {
+                    return item;
+                }
+            }
+        }
         return null;
     }
 
     @Override
     public int newAuction(int userID, AuctionSaleItem item, String token) throws RemoteException {
         try {
-            System.out.println("in newAuction");
             int auctionID = 0;
-
-            System.out.println("Creating new auction...");
             boolean exists = true;
+
             while (auctionID == 0 || exists) {
                 auctionID = (int) (Math.random() * 10000);
-                exists = false;
-                System.out.println("Checking for existing auction ID: " + auctionID);
-                for (AuctionItem i : items.values()) {
-                    if (i.itemID == auctionID) {
-                        System.out.println("Auction ID already exists: " + auctionID);
-                        exists = true;
-                        break;
-                    }
-                }
+                final int finalAuctionID = auctionID;
+                exists = items.values().stream().anyMatch(
+                        list -> list.stream().anyMatch(auctionItem -> auctionItem.itemID == finalAuctionID));
             }
 
-            System.out.println("New auction created with ID: " + auctionID);
             AuctionItem auctionItem = generateItem(auctionID, item.name, item.description, item.reservePrice);
-            items.put(userID, auctionItem);
+            items.computeIfAbsent(userID, k -> new ArrayList<>()).add(auctionItem);
             return auctionID;
         }
 
@@ -237,7 +239,9 @@ public class Server implements Auction {
     @Override
     public AuctionItem[] listItems(int userID, String token) throws RemoteException {
         try {
-            return (AuctionItem[]) items.values().toArray();
+            List<AuctionItem> allItems = new ArrayList<>();
+            items.values().forEach(allItems::addAll);
+            return allItems.toArray(new AuctionItem[0]);
         }
 
         catch (Exception e) {
@@ -253,15 +257,22 @@ public class Server implements Auction {
             if (!userIDList.containsKey(userID))
                 return null;
 
+            List<AuctionItem> userItems = items.get(userID);
+            if (userItems == null)
+                return null;
+
             AuctionItem item = null;
-            for (AuctionItem i : items.values())
+            for (AuctionItem i : userItems) {
                 if (i.itemID == itemID) {
                     item = i;
                     break;
                 }
+            }
 
-            items.remove(userID, item);
-            return generateAuctionResult(userIDList.get(userID), item.highestBid);
+            if (item != null) {
+                userItems.remove(item);
+                return generateAuctionResult(userIDList.get(userID), item.highestBid);
+            }
         }
 
         catch (Exception e) {

@@ -21,7 +21,9 @@ public class Client {
 
         switch (commandArgs[0]) {
 
+          // -------------------------
           // CASE FOR REGISTER COMMAND
+          // -------------------------
           case "register":
             int userID = server.register(commandArgs[1], clientKeyPair.getPublic());
             if (userID != -1) {
@@ -45,9 +47,10 @@ public class Client {
               System.out.println("User already exists.");
             break;
 
+          // --------------------
           // CASE FOR NEW COMMAND
+          // --------------------
           case "new":
-            System.out.println("Creating new auction...");
             if (token != null) {
               AuctionSaleItem item = generateAuctionSaleItem(commandArgs[2], commandArgs[3],
                   Integer.parseInt(commandArgs[4]));
@@ -58,7 +61,9 @@ public class Client {
               System.out.println("Error with Token.");
             break;
 
+          // ----------------------
           // CASE FOR CLOSE COMMAND
+          // ----------------------
           case "close":
             if (token != null) {
               AuctionResult result = server.closeAuction(Integer.parseInt(commandArgs[1]),
@@ -71,36 +76,63 @@ public class Client {
             }
             break;
 
+          // --------------------
           // CASE FOR BID COMMAND
+          // --------------------
           case "bid":
             if (token != null) {
+              System.out.println("before func");
               boolean bidSuccess = server.bid(Integer.parseInt(commandArgs[1]), Integer.parseInt(commandArgs[2]),
                   Integer.parseInt(commandArgs[3]), token);
+              System.out.println("after func");
               System.out.println(bidSuccess ? "Bid placed successfully." : "Failed to place bid.");
             }
             break;
 
+          // ---------------------
           // CASE FOR LIST COMMAND
+          // ---------------------
           case "list":
             if (token != null) {
+              if (commandArgs.length != 2) {
+                System.out.println("Invalid command. Usage: list <userID>");
+                break;
+              }
               AuctionItem[] items = server.listItems(Integer.parseInt(commandArgs[1]), token);
               System.out.println("Auction Items:");
               for (AuctionItem auctionItem : items)
                 System.out.println("ID: " + auctionItem.itemID + ", Name: " + auctionItem.name + ", Highest Bid: "
-                    + auctionItem.highestBid);
+                    + auctionItem.highestBid + "\n");
             }
             break;
 
+          // ----------------------
+          // CASE FOR USAGE COMMAND
+          // ----------------------
+          case "usage":
+            System.out.println("Available commands:");
+            System.out.println("register <email>");
+            System.out.println("new <userID> <itemName> <itemDescription> <reservePrice>");
+            System.out.println("close <userID> <auctionID>");
+            System.out.println("bid <userID> <auctionID> <bidAmount>");
+            System.out.println("list <userID>");
+            System.out.println("exit");
+            break;
+
+          // ---------------------
           // CASE FOR EXIT COMMAND
+          // ---------------------
           case "exit":
             System.out.println("Exiting...");
             scanner.close();
             return;
 
+          // ------------
           // DEFAULT CASE
+          // ------------
           default:
             System.out
-                .println("Unknown command. Available commands: new, close, bid, list, register, exit.");
+                .println("Unknown command. Check usage for commands.");
             break;
         }
       }
