@@ -9,8 +9,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Server implements Auction {
-    private ArrayList<AuctionItem> items = new ArrayList<AuctionItem>();
+    private HashMap<Integer, AuctionItem> items = new HashMap<>();
     private HashMap<Integer, String> userIDList = new HashMap<>();
+    private HashMap<Integer, PublicKey> userKeys = new HashMap<>();
     private ConcurrentHashMap<Integer, TokenInfo> tokenMap = new ConcurrentHashMap<>();
     private KeyPair serverKeyPair;
 
@@ -85,26 +86,12 @@ public class Server implements Auction {
         return keyGen.generateKeyPair();
     }
 
-    private boolean isTokenValid(int userID, String token) {
-        TokenInfo tokenInfo = tokenMap.get(userID);
-        return tokenInfo != null && tokenInfo.token.equals(token) && tokenInfo.expiryTime > System.currentTimeMillis();
-    }
-
     private void savePublicKey(PublicKey publicKey, String filePath) throws IOException {
         Files.createDirectories(Paths.get("keys"));
         try (FileOutputStream fos = new FileOutputStream(filePath)) {
             fos.write(publicKey.getEncoded());
         }
-        System.out.println("Public key saved to " + filePath);
     }
-    //
-    //
-    //
-    //
-    //
-    // -----------------------------------------
-    // ----------FUNCTIONS TO FIX---------------
-    // -----------------------------------------
 
     @Override
     public ChallengeInfo challenge(int userID, String clientChallenge) throws RemoteException {
@@ -133,12 +120,12 @@ public class Server implements Auction {
     @Override
     public TokenInfo authenticate(int userID, byte[] clientSignature) throws RemoteException {
         try {
-            String serverChallenge = Integer.toString(userID);
             Signature sig = Signature.getInstance("SHA256withRSA");
-            sig.initVerify(serverKeyPair.getPublic());
+            String serverChallenge = Integer.toString(userID);
+
+            sig.initVerify(userKeys.get(userID));
             sig.update(serverChallenge.getBytes());
 
-            // AUTHENTICATE METHOD FAILS HERE, CANNOT VERIFY CLIENT SIGNATURE
             if (sig.verify(clientSignature)) {
                 String token = Base64.getEncoder().encodeToString(("token" + userID).getBytes());
                 long expiryTime = System.currentTimeMillis() + 10000;
@@ -157,18 +144,8 @@ public class Server implements Auction {
         return null;
     }
 
-    // -----------------------------------------------
-    // ----------FUNCTIONS TO FIX ABOVE---------------
-    // -----------------------------------------------
-    //
-    //
-    //
-    //
-    //
-
     @Override
     public int register(String email, PublicKey pkey) throws RemoteException {
-        System.out.println("Register request received for email: " + email);
         try {
             if (userIDList.containsValue(email))
                 return -1;
@@ -178,6 +155,7 @@ public class Server implements Auction {
                 userID = (int) (Math.random() * 10000);
 
             userIDList.put(userID, email);
+            userKeys.put(userID, pkey);
             return userID;
         }
 
@@ -190,15 +168,12 @@ public class Server implements Auction {
 
     @Override
     public boolean bid(int userID, int itemID, int price, String token) throws RemoteException {
-        if (!isTokenValid(userID, token))
-            return false;
-
         try {
             if (!userIDList.containsKey(userID))
                 return false;
 
             AuctionItem item = null;
-            for (AuctionItem i : items)
+            for (AuctionItem i : items.values())
                 if (i.itemID == itemID) {
                     item = i;
                     break;
@@ -220,8 +195,6 @@ public class Server implements Auction {
 
     @Override
     public AuctionItem getSpec(int userID, int itemID, String token) throws RemoteException {
-        if (!isTokenValid(userID, token))
-            return null;
         if (items.get(itemID) != null)
             return items.get(itemID);
         return null;
@@ -229,29 +202,28 @@ public class Server implements Auction {
 
     @Override
     public int newAuction(int userID, AuctionSaleItem item, String token) throws RemoteException {
-        if (!isTokenValid(userID, token))
-            return -1;
-
         try {
-            if (!userIDList.containsKey(userID) || item == null)
-                return -1;
-
+            System.out.println("in newAuction");
             int auctionID = 0;
 
+            System.out.println("Creating new auction...");
             boolean exists = true;
             while (auctionID == 0 || exists) {
                 auctionID = (int) (Math.random() * 10000);
                 exists = false;
-                for (AuctionItem i : items) {
+                System.out.println("Checking for existing auction ID: " + auctionID);
+                for (AuctionItem i : items.values()) {
                     if (i.itemID == auctionID) {
+                        System.out.println("Auction ID already exists: " + auctionID);
                         exists = true;
                         break;
                     }
                 }
             }
 
+            System.out.println("New auction created with ID: " + auctionID);
             AuctionItem auctionItem = generateItem(auctionID, item.name, item.description, item.reservePrice);
-            items.add(auctionItem);
+            items.put(userID, auctionItem);
             return auctionID;
         }
 
@@ -264,11 +236,8 @@ public class Server implements Auction {
 
     @Override
     public AuctionItem[] listItems(int userID, String token) throws RemoteException {
-        if (!isTokenValid(userID, token))
-            return new AuctionItem[0];
-
         try {
-            return items.toArray(new AuctionItem[0]);
+            return (AuctionItem[]) items.values().toArray();
         }
 
         catch (Exception e) {
@@ -280,21 +249,18 @@ public class Server implements Auction {
 
     @Override
     public AuctionResult closeAuction(int userID, int itemID, String token) throws RemoteException {
-        if (!isTokenValid(userID, token))
-            return null;
-
         try {
             if (!userIDList.containsKey(userID))
                 return null;
 
             AuctionItem item = null;
-            for (AuctionItem i : items)
+            for (AuctionItem i : items.values())
                 if (i.itemID == itemID) {
                     item = i;
                     break;
                 }
 
-            items.remove(item);
+            items.remove(userID, item);
             return generateAuctionResult(userIDList.get(userID), item.highestBid);
         }
 
