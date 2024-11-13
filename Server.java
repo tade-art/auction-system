@@ -12,6 +12,7 @@ public class Server implements Auction {
     private HashMap<Integer, List<AuctionItem>> items = new HashMap<>();
     private HashMap<Integer, String> userIDList = new HashMap<>();
     private HashMap<Integer, PublicKey> userKeys = new HashMap<>();
+    private HashMap<Integer, Integer> currHighestBidder = new HashMap<>();
     private ConcurrentHashMap<Integer, TokenInfo> tokenMap = new ConcurrentHashMap<>();
     private KeyPair serverKeyPair;
 
@@ -188,6 +189,7 @@ public class Server implements Auction {
                 return false;
 
             item.highestBid = price;
+            currHighestBidder.put(itemID, userID);
             return true;
         }
 
@@ -216,7 +218,6 @@ public class Server implements Auction {
         try {
             int auctionID = 0;
             boolean exists = true;
-
             while (auctionID == 0 || exists) {
                 auctionID = (int) (Math.random() * 10000);
                 final int finalAuctionID = auctionID;
@@ -226,6 +227,7 @@ public class Server implements Auction {
 
             AuctionItem auctionItem = generateItem(auctionID, item.name, item.description, item.reservePrice);
             items.computeIfAbsent(userID, k -> new ArrayList<>()).add(auctionItem);
+            currHighestBidder.put(auctionID, userID);
             return auctionID;
         }
 
@@ -271,11 +273,9 @@ public class Server implements Auction {
 
             if (item != null) {
                 userItems.remove(item);
-                return generateAuctionResult(userIDList.get(userID), item.highestBid);
+                return generateAuctionResult(userIDList.get(currHighestBidder.get(itemID)), item.highestBid);
             }
-        }
-
-        catch (Exception e) {
+        } catch (Exception e) {
             System.err.println("Error in closeAuction:");
             e.printStackTrace();
         }
