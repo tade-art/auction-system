@@ -1,17 +1,14 @@
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-import java.rmi.server.UnicastRemoteObject;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.rmi.*;
+import java.rmi.registry.*;
+import java.rmi.server.*;
+import java.util.*;
 
 public class Server implements Auction {
-    private ArrayList<AuctionItem> items = new ArrayList<AuctionItem>();
+    private HashMap<Integer, List<AuctionItem>> items = new HashMap<>();
     private HashMap<Integer, String> userIDList = new HashMap<>();
+    private HashMap<Integer, Integer> currHighestBidder = new HashMap<>();
 
     public Server() throws Exception {
-        // KeyManager.generateAndStoreKey();
-        // items.add(generateItem(1, "Item 1", "Description 1", 100));
     }
 
     public static void main(String[] args) {
@@ -27,6 +24,10 @@ public class Server implements Auction {
             e.printStackTrace();
         }
     }
+
+    // ----------------
+    // HELPER FUNCTIONS
+    // ----------------
 
     public AuctionItem generateItem(int itemID, String name, String description, int highestBid) {
         AuctionItem item = new AuctionItem();
@@ -52,16 +53,9 @@ public class Server implements Auction {
         return toReturn;
     }
 
-    @Override
-    public AuctionItem getSpec(int itemID) throws RemoteException {
-        if (items.get(itemID) != null)
-            return items.get(itemID);
-        return null;
-    }
-
-    // -----------------------------------------------
-    // VVVVV ----- NEW FUNCTIONS GO HERE ----- VVVVVV
-    // -----------------------------------------------
+    // -----------------------------------------
+    // ----------NEW FUNCTIONS GO HERE----------
+    // -----------------------------------------
 
     @Override
     public int register(String email) throws RemoteException {
@@ -69,14 +63,12 @@ public class Server implements Auction {
             if (userIDList.containsValue(email))
                 return -1;
 
-            else {
-                int userID = 0;
-                while (userID == 0 || userIDList.containsKey(userID))
-                    userID = (int) (Math.random() * 10000);
+            int userID = (int) (Math.random() * 10000);
+            while (userIDList.containsKey(userID))
+                userID = (int) (Math.random() * 10000);
 
-                userIDList.put(userID, email);
-                return userID;
-            }
+            userIDList.put(userID, email);
+            return userID;
         }
 
         catch (Exception e) {
@@ -87,27 +79,65 @@ public class Server implements Auction {
     }
 
     @Override
-    public int newAuction(int userID, AuctionSaleItem item) throws RemoteException {
+    public boolean bid(int userID, int itemID, int price) throws RemoteException {
         try {
-            if (!userIDList.containsKey(userID) || item == null)
-                return -1;
+            if (!userIDList.containsKey(userID))
+                return false;
 
-            int auctionID = 0;
-
-            boolean exists = true;
-            while (auctionID == 0 || exists) {
-                auctionID = (int) (Math.random() * 10000);
-                exists = false;
-                for (AuctionItem i : items) {
-                    if (i.itemID == auctionID) {
-                        exists = true;
+            AuctionItem item = null;
+            for (List<AuctionItem> itemList : items.values()) {
+                for (AuctionItem i : itemList) {
+                    if (i.itemID == itemID) {
+                        item = i;
                         break;
                     }
                 }
+                if (item != null)
+                    break;
+            }
+
+            if (item == null || price <= item.highestBid || price < 0)
+                return false;
+
+            item.highestBid = price;
+            currHighestBidder.put(itemID, userID);
+            return true;
+        }
+
+        catch (Exception e) {
+            System.err.println("Error in bid:");
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    @Override
+    public AuctionItem getSpec(int itemID) throws RemoteException {
+        for (List<AuctionItem> userItems : items.values()) {
+            for (AuctionItem item : userItems) {
+                if (item.itemID == itemID) {
+                    return item;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public int newAuction(int userID, AuctionSaleItem item) throws RemoteException {
+        try {
+            int auctionID = 0;
+            boolean exists = true;
+            while (auctionID == 0 || exists) {
+                auctionID = (int) (Math.random() * 10000);
+                final int finalAuctionID = auctionID;
+                exists = items.values().stream().anyMatch(
+                        list -> list.stream().anyMatch(auctionItem -> auctionItem.itemID == finalAuctionID));
             }
 
             AuctionItem auctionItem = generateItem(auctionID, item.name, item.description, item.reservePrice);
-            items.add(auctionItem);
+            items.computeIfAbsent(userID, k -> new ArrayList<>()).add(auctionItem);
+            currHighestBidder.put(auctionID, userID);
             return auctionID;
         }
 
@@ -121,8 +151,12 @@ public class Server implements Auction {
     @Override
     public AuctionItem[] listItems() throws RemoteException {
         try {
-            return items.toArray(new AuctionItem[0]);
-        } catch (Exception e) {
+            List<AuctionItem> allItems = new ArrayList<>();
+            items.values().forEach(allItems::addAll);
+            return allItems.toArray(new AuctionItem[0]);
+        }
+
+        catch (Exception e) {
             System.err.println("Error in listItems:");
             e.printStackTrace();
         }
@@ -135,18 +169,23 @@ public class Server implements Auction {
             if (!userIDList.containsKey(userID))
                 return null;
 
+            List<AuctionItem> userItems = items.get(userID);
+            if (userItems == null)
+                return null;
+
             AuctionItem item = null;
-            for (AuctionItem i : items)
+            for (AuctionItem i : userItems) {
                 if (i.itemID == itemID) {
                     item = i;
                     break;
                 }
+            }
 
-            items.remove(item);
-            return generateAuctionResult(userIDList.get(userID), item.highestBid);
-        }
-
-        catch (Exception e) {
+            if (item != null) {
+                userItems.remove(item);
+                return generateAuctionResult(userIDList.get(currHighestBidder.get(itemID)), item.highestBid);
+            }
+        } catch (Exception e) {
             System.err.println("Error in closeAuction:");
             e.printStackTrace();
         }
@@ -154,29 +193,7 @@ public class Server implements Auction {
     }
 
     @Override
-    public boolean bid(int userID, int itemID, int price) throws RemoteException {
-        try {
-            if (!userIDList.containsKey(userID))
-                return false;
-
-            AuctionItem item = null;
-            for (AuctionItem i : items)
-                if (i.itemID == itemID) {
-                    item = i;
-                    break;
-                }
-
-            if (item == null || price <= item.highestBid || price < 0)
-                return false;
-
-            item.highestBid = price;
-            return true;
-        }
-
-        catch (Exception e) {
-            System.err.println("Error in bid:");
-            e.printStackTrace();
-        }
-        return false;
+    public int getPrimaryReplicaID() throws RemoteException {
+        throw new UnsupportedOperationException("Unimplemented method 'getPrimaryReplicaID'");
     }
 }
