@@ -1,6 +1,7 @@
 import java.rmi.*;
 import java.rmi.registry.*;
 import java.rmi.server.*;
+import java.security.PublicKey;
 import java.util.*;
 
 public class Server implements Auction {
@@ -24,7 +25,6 @@ public class Server implements Auction {
             e.printStackTrace();
         }
     }
-
     // ----------------
     // HELPER FUNCTIONS
     // ----------------
@@ -138,6 +138,8 @@ public class Server implements Auction {
             AuctionItem auctionItem = generateItem(auctionID, item.name, item.description, item.reservePrice);
             items.computeIfAbsent(userID, k -> new ArrayList<>()).add(auctionItem);
             currHighestBidder.put(auctionID, userID);
+            items.computeIfAbsent(userID, k -> new ArrayList<>()).add(auctionItem);
+            currHighestBidder.put(auctionID, userID);
             return auctionID;
         }
 
@@ -179,13 +181,16 @@ public class Server implements Auction {
                     item = i;
                     break;
                 }
+
             }
 
             if (item != null) {
                 userItems.remove(item);
                 return generateAuctionResult(userIDList.get(currHighestBidder.get(itemID)), item.highestBid);
             }
-        } catch (Exception e) {
+        }
+
+        catch (Exception e) {
             System.err.println("Error in closeAuction:");
             e.printStackTrace();
         }

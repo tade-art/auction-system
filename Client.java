@@ -97,4 +97,12 @@ public class Client {
     System.out.println("  register <email> - Register a new user");
     System.out.println("  exit - Exit the program");
   }
+
+  public static AuctionSaleItem generateAuctionSaleItem(String name, String description, int reservePrice) {
+    AuctionSaleItem toReturn = new AuctionSaleItem();
+    toReturn.name = name;
+    toReturn.description = description;
+    toReturn.reservePrice = reservePrice;
+    return toReturn;
+  }
 }
