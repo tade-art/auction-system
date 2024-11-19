@@ -1,7 +1,6 @@
 import java.rmi.*;
 import java.rmi.registry.*;
 import java.rmi.server.*;
-import java.security.PublicKey;
 import java.util.*;
 
 public class Server implements Auction {
