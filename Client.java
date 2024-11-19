@@ -10,7 +10,7 @@ public class Client {
       Scanner scanner = new Scanner(System.in);
 
       while (true) {
-        System.out.println("\nEnter command:");
+        System.out.println("\nEnter command: ");
         String command = scanner.nextLine();
         String[] commandArgs = command.split(" ");
 
