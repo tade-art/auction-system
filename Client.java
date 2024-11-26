@@ -6,7 +6,7 @@ public class Client {
   public static void main(String[] args) {
     try {
       Registry registry = LocateRegistry.getRegistry("localhost");
-      Auction server = (Auction) registry.lookup("Auction");
+      Auction server = (Auction) registry.lookup("FrontEnd");
       Scanner scanner = new Scanner(System.in);
 
       while (true) {
