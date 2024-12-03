@@ -1,3 +1,4 @@
+import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -5,30 +6,20 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 
 public class FrontEnd implements Auction {
-    protected static ArrayList<Replica> replicas = new ArrayList<>();
+    protected static ArrayList<Integer> replicaIDs = new ArrayList<>();
     protected static int amountOfReplicas = 3;
-    protected static Replica primaryReplica;
+    protected static int primaryReplicaID;
+    protected static IReplica primaryReplica = null;
 
     public static void main(String[] args) throws Exception {
         try {
             FrontEnd frontEnd = new FrontEnd();
             String name = "FrontEnd";
             Auction stub = (Auction) UnicastRemoteObject.exportObject(frontEnd, 0);
-            Registry registry = LocateRegistry.getRegistry();
+            Registry registry = LocateRegistry.getRegistry("localhost");
             registry.rebind(name, stub);
 
-            // Initialize replicas
-            for (int i = 0; i < amountOfReplicas; i++) {
-                Replica replica = new Replica();
-                replicas.add(replica);
-                System.out.println("Replica " + i + " added.");
-            }
-
-            // Assign the first replica as primary
-            if (!replicas.isEmpty()) {
-                primaryReplica = replicas.get(0);
-                System.out.println("Primary Replica assigned.");
-            }
+            connectToReplicas();
 
             System.out.println("FrontEnd is ready.");
         } catch (Exception e) {
@@ -37,65 +28,89 @@ public class FrontEnd implements Auction {
         }
     }
 
-    @Override
-    public boolean bid(int userID, int itemID, int price) throws RemoteException {
-        try {
-            if (primaryReplica.bid(userID, itemID, price)) {
-                // Notify other replicas to update their state
-                for (Replica replica : replicas) {
-                    if (replica != primaryReplica) {
-                        replica.updateStateFromPrimary(primaryReplica);
+    // ______________
+    // Helper methods
+    // ______________
+
+    protected static void connectToReplicas() throws RemoteException {
+        for (int i = 1; i < amountOfReplicas; i++) {
+            try {
+                Registry registry = LocateRegistry.getRegistry("localhost");
+                IReplica rep = (IReplica) registry.lookup("Replica " + i);
+
+                if (!replicaIDs.contains(rep.getReplicaID()))
+                    replicaIDs.add(rep.getReplicaID());
+
+                if (primaryReplica == null) {
+                    primaryReplica = rep;
+                    primaryReplicaID = primaryReplica.getReplicaID();
+                }
+
+            } catch (Exception e) {
+                if (replicaIDs.contains(i)) {
+                    replicaIDs.remove(Integer.valueOf(i));
+
+                    if (primaryReplica != null && primaryReplicaID == i) {
+                        primaryReplica = null;
+                        if (!replicaIDs.isEmpty()) {
+                            int newPrimaryID = replicaIDs.get(0);
+                            try {
+                                primaryReplica = (IReplica) LocateRegistry.getRegistry("localhost")
+                                        .lookup("Replica " + newPrimaryID);
+                                primaryReplicaID = newPrimaryID;
+                            } catch (NotBoundException e1) {
+                                e1.printStackTrace();
+                            }
+                        }
                     }
                 }
-                return true;
             }
-        } catch (Exception e) {
-            System.err.println("Error during bid:");
-            e.printStackTrace();
         }
+
+        if (primaryReplica != null)
+            primaryReplica.UpdateListInPrimaryReplica(replicaIDs);
+    }
+
+    @Override
+    public boolean bid(int userID, int itemID, int price) throws RemoteException {
+        connectToReplicas();
+        primaryReplica.bid(userID, itemID, price);
         return false;
     }
 
     @Override
     public int register(String email) throws RemoteException {
+        connectToReplicas();
         return primaryReplica.register(email);
     }
 
     @Override
     public AuctionItem getSpec(int itemID) throws RemoteException {
+        connectToReplicas();
         return primaryReplica.getSpec(itemID);
     }
 
     @Override
     public int newAuction(int userID, AuctionSaleItem item) throws RemoteException {
+        connectToReplicas();
         return primaryReplica.newAuction(userID, item);
     }
 
     @Override
     public AuctionItem[] listItems() throws RemoteException {
+        connectToReplicas();
         return primaryReplica.listItems();
     }
 
     @Override
     public AuctionResult closeAuction(int userID, int itemID) throws RemoteException {
-        AuctionResult result = primaryReplica.closeAuction(userID, itemID);
-        // Notify replicas to update their state after auction closure
-        for (Replica replica : replicas) {
-            if (replica != primaryReplica) {
-                replica.updateStateFromPrimary(primaryReplica);
-            }
-        }
-        return result;
+        connectToReplicas();
+        return primaryReplica.closeAuction(userID, itemID);
     }
 
     @Override
     public int getPrimaryReplicaID() throws RemoteException {
-        return replicas.indexOf(primaryReplica);
+        connectToReplicas();
+        return primaryReplica.getReplicaID();
     }
-
-    public void addReplica(Replica replica) throws RemoteException {
-        replicas.add(replica);
-        System.out.println("Replica added with ID: " + replica.getPrimaryReplicaID());
-    }
-
 }

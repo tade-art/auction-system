@@ -1,14 +1,17 @@
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.ArrayList;
 
-public class Replica implements Auction {
+public class Replica implements IReplica {
     private HashMap<Integer, List<AuctionItem>> items = new HashMap<>();
     private HashMap<Integer, String> userIDList = new HashMap<>();
     private HashMap<Integer, Integer> currHighestBidder = new HashMap<>();
+    private static ArrayList<Integer> listOfReplicas = new ArrayList<>();
     private int replicaID;
 
     public Replica() throws Exception {
@@ -17,16 +20,14 @@ public class Replica implements Auction {
     public static void main(String[] args) {
         if (args.length > 0) {
             try {
-                int id = Integer.parseInt(args[0]);
                 Replica replica = new Replica();
-                replica.replicaID = id;
-                System.out.println("Replica started with ID: " + id);
+                replica.replicaID = Integer.parseInt(args[0]);
+                listOfReplicas.add(replica.replicaID);
 
-                // Connect to FrontEnd and add this Replica
-                Registry registry = LocateRegistry.getRegistry("localhost", 1099);
-                Auction frontEnd = (Auction) registry.lookup("FrontEnd");
-                frontEnd.addReplica(replica);
-                System.out.println("Replica with ID: " + id + " added to FrontEnd.");
+                String name = "Replica " + replica.replicaID;
+                Registry registry = LocateRegistry.getRegistry("localhost");
+                IReplica stub = (IReplica) UnicastRemoteObject.exportObject(replica, 0);
+                registry.rebind(name, stub);
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -36,12 +37,9 @@ public class Replica implements Auction {
         }
     }
 
-    public void updateStateFromPrimary(Replica primaryReplica) throws RemoteException {
-        this.items = new HashMap<>(primaryReplica.items);
-        this.userIDList = new HashMap<>(primaryReplica.userIDList);
-        this.currHighestBidder = new HashMap<>(primaryReplica.currHighestBidder);
-        System.out.println("Replica state updated from Primary Replica.");
-    }
+    // ______________________________
+    // Helper methods
+    // _____________________________
 
     protected AuctionItem generateItem(int itemID, String name, String description, int highestBid) {
         AuctionItem item = new AuctionItem();
@@ -79,6 +77,7 @@ public class Replica implements Auction {
         }
 
         userIDList.put(userID, email);
+        synchroniseState();
         return userID;
     }
 
@@ -88,8 +87,10 @@ public class Replica implements Auction {
         if (item != null && price > item.highestBid) {
             item.highestBid = price;
             currHighestBidder.put(itemID, userID);
+            synchroniseState();
             return true;
         }
+        synchroniseState();
         return false;
     }
 
@@ -111,6 +112,7 @@ public class Replica implements Auction {
         AuctionItem auctionItem = generateItem(auctionID, item.name, item.description, item.reservePrice);
         items.computeIfAbsent(userID, k -> new ArrayList<>()).add(auctionItem);
         currHighestBidder.put(auctionID, userID);
+        synchroniseState();
         return auctionID;
     }
 
@@ -126,13 +128,68 @@ public class Replica implements Auction {
         AuctionItem item = getSpec(itemID);
         if (item != null) {
             items.get(userID).remove(item);
-            return generateAuctionResult(userIDList.get(currHighestBidder.get(itemID)), item.highestBid);
+            AuctionResult result = generateAuctionResult(userIDList.get(currHighestBidder.get(itemID)),
+                    item.highestBid);
+            synchroniseState();
+            return result;
         }
+        synchroniseState();
         return null;
+    }
+
+    // ______________________________
+    // New Ireplica methods
+    // _____________________________
+
+    @Override
+    public int getReplicaID() throws RemoteException {
+        return replicaID;
+    }
+
+    @Override
+    public void synchroniseState() throws RemoteException {
+        for (int replicaID : listOfReplicas) {
+            if (replicaID == this.replicaID)
+                continue;
+            try {
+                IReplica replica = (IReplica) LocateRegistry.getRegistry("localhost").lookup("Replica " + replicaID);
+                replica.clone(items, userIDList, currHighestBidder);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @Override
     public int getPrimaryReplicaID() throws RemoteException {
-        return replicaID;
+        System.out.println("avoid plz and thanks");
+        return 0;
     }
+
+    @Override
+    public void UpdateListInPrimaryReplica(ArrayList<Integer> replicas) throws RemoteException {
+        listOfReplicas.clear();
+        listOfReplicas.addAll(replicas);
+    }
+
+    @Override
+    public void clone(HashMap<Integer, List<AuctionItem>> items, HashMap<Integer, String> userIDList,
+            HashMap<Integer, Integer> currHighestBidder) throws RemoteException {
+
+        // Deep copy `items`
+        this.items = new HashMap<>();
+        for (Map.Entry<Integer, List<AuctionItem>> entry : items.entrySet()) {
+            List<AuctionItem> clonedList = new ArrayList<>();
+            for (AuctionItem item : entry.getValue()) {
+                AuctionItem clonedItem = generateItem(item.itemID, item.name, item.description, item.highestBid);
+                clonedList.add(clonedItem);
+            }
+            this.items.put(entry.getKey(), clonedList);
+        }
+
+        // Shallow copy `userIDList` and `currHighestBidder`
+        this.userIDList = new HashMap<>(userIDList);
+        this.currHighestBidder = new HashMap<>(currHighestBidder);
+    }
+
 }
