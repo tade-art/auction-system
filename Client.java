@@ -33,6 +33,9 @@ public class Client {
           case "usage":
             printUsage();
             break;
+          case "get":
+            handleGet(commandArgs, server);
+            break;
           case "exit":
             System.out.println("Exiting...");
             scanner.close();
@@ -48,6 +51,23 @@ public class Client {
       System.err.println("Exception:");
       e.printStackTrace();
     }
+  }
+
+  public static AuctionSaleItem generateAuctionSaleItem(String name, String description, int reservePrice) {
+    AuctionSaleItem toReturn = new AuctionSaleItem();
+    toReturn.name = name;
+    toReturn.description = description;
+    toReturn.reservePrice = reservePrice;
+    return toReturn;
+  }
+
+  private static void handleGet(String[] args, Auction server) throws Exception {
+    AuctionItem item = server.getSpec(Integer.parseInt(args[1]));
+    if (item != null)
+      System.out.println("Item ID: " + item.itemID + ", Name: " + item.name + ", Description: " + item.description
+          + ", Highest Bid: " + item.highestBid);
+    else
+      System.out.println("Item not found.");
   }
 
   private static void handleNewAuction(String[] args, Auction server) throws Exception {
@@ -95,14 +115,7 @@ public class Client {
     System.out.println("  bid <userID> <itemID> <price> - Place a bid on an auction");
     System.out.println("  list - List all auction items");
     System.out.println("  register <email> - Register a new user");
+    System.out.println("  get <itemID> - Get details of an auction item");
     System.out.println("  exit - Exit the program");
-  }
-
-  public static AuctionSaleItem generateAuctionSaleItem(String name, String description, int reservePrice) {
-    AuctionSaleItem toReturn = new AuctionSaleItem();
-    toReturn.name = name;
-    toReturn.description = description;
-    toReturn.reservePrice = reservePrice;
-    return toReturn;
   }
 }

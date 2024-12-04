@@ -176,7 +176,6 @@ public class Replica implements IReplica {
     public void clone(HashMap<Integer, List<AuctionItem>> items, HashMap<Integer, String> userIDList,
             HashMap<Integer, Integer> currHighestBidder) throws RemoteException {
 
-        // Deep copy `items`
         this.items = new HashMap<>();
         for (Map.Entry<Integer, List<AuctionItem>> entry : items.entrySet()) {
             List<AuctionItem> clonedList = new ArrayList<>();
@@ -187,7 +186,6 @@ public class Replica implements IReplica {
             this.items.put(entry.getKey(), clonedList);
         }
 
-        // Shallow copy `userIDList` and `currHighestBidder`
         this.userIDList = new HashMap<>(userIDList);
         this.currHighestBidder = new HashMap<>(currHighestBidder);
     }

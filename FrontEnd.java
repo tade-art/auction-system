@@ -1,4 +1,3 @@
-import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -7,9 +6,6 @@ import java.util.ArrayList;
 
 public class FrontEnd implements Auction {
     protected static ArrayList<Integer> replicaIDs = new ArrayList<>();
-    protected static int amountOfReplicas = 3;
-    protected static int primaryReplicaID;
-    protected static IReplica primaryReplica = null;
 
     public static void main(String[] args) throws Exception {
         try {
@@ -23,94 +19,133 @@ public class FrontEnd implements Auction {
 
             System.out.println("FrontEnd is ready.");
         } catch (Exception e) {
-            System.err.println("Something went wrong here:");
+            System.err.println("Something went wrong with initliasing FrontEnd:");
             e.printStackTrace();
         }
     }
 
-    // ______________
-    // Helper methods
-    // ______________
+    // NEED TO ADD STATE SYNC SOMEWHERE HERE
+    // CANNOT HANDLE IF PRIME REP ID 1 GOES DOWN AND COMES BACK, ISSUE WITH TRACKING
+    // PRIME REP STATE
 
     protected static void connectToReplicas() throws RemoteException {
-        for (int i = 1; i < amountOfReplicas; i++) {
-            try {
-                Registry registry = LocateRegistry.getRegistry("localhost");
-                IReplica rep = (IReplica) registry.lookup("Replica " + i);
+        IReplica currentPrimaryReplica = null;
 
-                if (!replicaIDs.contains(rep.getReplicaID()))
-                    replicaIDs.add(rep.getReplicaID());
+        try {
+            Registry registry = LocateRegistry.getRegistry("localhost");
+            String[] registeredServices = registry.list();
 
-                if (primaryReplica == null) {
-                    primaryReplica = rep;
-                    primaryReplicaID = primaryReplica.getReplicaID();
-                }
+            for (String service : registeredServices) {
+                if (service.startsWith("Replica ")) {
+                    try {
+                        IReplica rep = (IReplica) registry.lookup(service);
+                        int replicaID = rep.getReplicaID();
 
-            } catch (Exception e) {
-                if (replicaIDs.contains(i)) {
-                    replicaIDs.remove(Integer.valueOf(i));
+                        if (!replicaIDs.contains(replicaID))
+                            replicaIDs.add(replicaID);
 
-                    if (primaryReplica != null && primaryReplicaID == i) {
-                        primaryReplica = null;
-                        if (!replicaIDs.isEmpty()) {
-                            int newPrimaryID = replicaIDs.get(0);
-                            try {
-                                primaryReplica = (IReplica) LocateRegistry.getRegistry("localhost")
-                                        .lookup("Replica " + newPrimaryID);
-                                primaryReplicaID = newPrimaryID;
-                            } catch (NotBoundException e1) {
-                                e1.printStackTrace();
+                        if (currentPrimaryReplica == null && replicaIDs.contains(replicaID)) {
+                            currentPrimaryReplica = rep;
+                            System.out.println("Primary replica assigned: Replica ID " + replicaID);
+                        }
+
+                    } catch (Exception e) {
+                        System.err.println("Connection failed");
+
+                        try {
+                            int replicaID = Integer.parseInt(service.replace("Replica ", ""));
+                            replicaIDs.remove((Integer) replicaID);
+
+                            if (currentPrimaryReplica != null && replicaIDs.indexOf(replicaID) == 0) {
+                                currentPrimaryReplica = null;
+
+                                if (!replicaIDs.isEmpty()) {
+                                    int newPrimaryID = replicaIDs.get(0);
+                                    try {
+                                        currentPrimaryReplica = (IReplica) registry.lookup("Replica " + newPrimaryID);
+                                        System.out.println("Primary replica reassigned: Replica ID " + newPrimaryID);
+                                    } catch (Exception ex) {
+                                        System.err.println("Error reassigning primary replica: " + ex.getMessage());
+                                    }
+                                } else {
+                                    System.err.println("No replicas available to assign as primary.");
+                                }
                             }
+                        } catch (NumberFormatException ex) {
+                            System.err.println("Error parsing replica ID from service: " + ex.getMessage());
                         }
                     }
                 }
             }
+
+            if (currentPrimaryReplica != null) {
+                currentPrimaryReplica.UpdateListInPrimaryReplica(replicaIDs);
+            }
+
         }
 
-        if (primaryReplica != null)
-            primaryReplica.UpdateListInPrimaryReplica(replicaIDs);
+        catch (Exception e) {
+            System.err.println("Error connecting to replicas: " + e.getMessage());
+        }
+
+        System.out.println("Updated replica list: " + replicaIDs);
+    }
+
+    private IReplica getPrimaryReplica() throws RemoteException {
+        if (replicaIDs.isEmpty())
+            connectToReplicas();
+
+        if (!replicaIDs.isEmpty()) {
+            try {
+                int primaryID = replicaIDs.get(0);
+                return (IReplica) LocateRegistry.getRegistry("localhost").lookup("Replica " + primaryID);
+            } catch (Exception e) {
+                System.err.println("Error fetching primary replica:");
+                e.printStackTrace();
+            }
+        }
+        throw new RemoteException("No replicas available.");
     }
 
     @Override
     public boolean bid(int userID, int itemID, int price) throws RemoteException {
         connectToReplicas();
-        primaryReplica.bid(userID, itemID, price);
-        return false;
+        return getPrimaryReplica().bid(userID, itemID, price);
     }
 
     @Override
     public int register(String email) throws RemoteException {
         connectToReplicas();
-        return primaryReplica.register(email);
+        return getPrimaryReplica().register(email);
     }
 
     @Override
     public AuctionItem getSpec(int itemID) throws RemoteException {
         connectToReplicas();
-        return primaryReplica.getSpec(itemID);
+        return getPrimaryReplica().getSpec(itemID);
     }
 
     @Override
     public int newAuction(int userID, AuctionSaleItem item) throws RemoteException {
         connectToReplicas();
-        return primaryReplica.newAuction(userID, item);
+        return getPrimaryReplica().newAuction(userID, item);
     }
 
     @Override
     public AuctionItem[] listItems() throws RemoteException {
         connectToReplicas();
-        return primaryReplica.listItems();
+        return getPrimaryReplica().listItems();
     }
 
     @Override
     public AuctionResult closeAuction(int userID, int itemID) throws RemoteException {
         connectToReplicas();
-        return primaryReplica.closeAuction(userID, itemID);
+        return getPrimaryReplica().closeAuction(userID, itemID);
     }
 
     @Override
     public int getPrimaryReplicaID() throws RemoteException {
         connectToReplicas();
-        return primaryReplica.getReplicaID();
+        return getPrimaryReplica().getReplicaID();
     }
 }
