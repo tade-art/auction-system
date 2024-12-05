@@ -99,6 +99,7 @@ public class Replica implements IReplica {
         for (List<AuctionItem> userItems : items.values()) {
             for (AuctionItem item : userItems) {
                 if (item.itemID == itemID) {
+                    synchroniseState();
                     return item;
                 }
             }
@@ -120,6 +121,7 @@ public class Replica implements IReplica {
     public AuctionItem[] listItems() throws RemoteException {
         List<AuctionItem> allItems = new ArrayList<>();
         items.values().forEach(allItems::addAll);
+        synchroniseState();
         return allItems.toArray(new AuctionItem[0]);
     }
 

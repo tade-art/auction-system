@@ -24,6 +24,10 @@ public class FrontEnd implements Auction {
         }
     }
 
+    //
+    //
+    //
+
     protected static void connectToReplicas() throws RemoteException {
         IReplica currentPrimaryReplica = null;
 
@@ -32,57 +36,71 @@ public class FrontEnd implements Auction {
             String[] registeredServices = registry.list();
 
             for (String service : registeredServices) {
-                if (service.startsWith("Replica ")) {
-                    try {
-                        IReplica rep = (IReplica) registry.lookup(service);
-                        int replicaID = rep.getReplicaID();
+                if (!service.startsWith("Replica "))
+                    continue;
 
-                        replicaStatus.putIfAbsent(replicaID, false);
+                try {
+                    IReplica replica = (IReplica) registry.lookup(service);
+                    int replicaID = replica.getReplicaID();
+                    replicaStatus.putIfAbsent(replicaID, false);
 
-                        if (currentPrimaryReplica == null && !replicaStatus.containsValue(true)) {
-                            currentPrimaryReplica = rep;
-                            replicaStatus.put(replicaID, true);
-                        }
+                    replica.synchroniseState();
 
-                        if (currentPrimaryReplica != null)
-                            currentPrimaryReplica.synchroniseState();
-
-                    } catch (Exception e) {
-                        System.err.println("Connection failed to " + service);
-
-                        try {
-                            int replicaID = Integer.parseInt(service.replace("Replica ", ""));
-                            replicaStatus.remove(replicaID);
-
-                            if (currentPrimaryReplica != null && replicaStatus.containsKey(replicaID)
-                                    && replicaStatus.get(replicaID)) {
-                                currentPrimaryReplica = null;
-
-                                for (Map.Entry<Integer, Boolean> entry : replicaStatus.entrySet()) {
-                                    if (!entry.getValue()) {
-                                        try {
-                                            currentPrimaryReplica = (IReplica) registry
-                                                    .lookup("Replica " + entry.getKey());
-                                            replicaStatus.put(entry.getKey(), true);
-                                            break;
-                                        } catch (Exception ex) {
-                                            System.err.println("Error reassigning primary replica: " + ex.getMessage());
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (NumberFormatException ex) {
-                            System.err.println("Error parsing replica ID from service: " + ex.getMessage());
-                        }
+                    if (currentPrimaryReplica == null && replicaStatus.get(replicaID)) {
+                        currentPrimaryReplica = replica;
                     }
+                } catch (Exception e) {
+                    System.err.println("Connection failed to " + service);
+                    handleReplicaFailure(service);
                 }
             }
-            if (currentPrimaryReplica != null)
-                currentPrimaryReplica.UpdateListInPrimaryReplica((ArrayList<Integer>) replicaStatus.keySet());
+
+            if (currentPrimaryReplica == null) {
+                currentPrimaryReplica = assignPrimaryReplica(registry);
+            }
+
+            if (currentPrimaryReplica != null) {
+                currentPrimaryReplica.UpdateListInPrimaryReplica(new ArrayList<>(replicaStatus.keySet()));
+            }
         } catch (Exception e) {
             System.err.println("Error connecting to replicas: " + e.getMessage());
         }
+
+        System.out.println("List of replicas: " + replicaStatus);
     }
+
+    private static void handleReplicaFailure(String service) {
+        try {
+            int replicaID = Integer.parseInt(service.replace("Replica ", ""));
+            replicaStatus.remove(replicaID);
+        } catch (NumberFormatException e) {
+            System.err.println("Error parsing replica ID: " + e.getMessage());
+        }
+    }
+
+    private static IReplica assignPrimaryReplica(Registry registry) {
+        IReplica newPrimary = null;
+
+        for (Map.Entry<Integer, Boolean> entry : replicaStatus.entrySet()) {
+            if (!entry.getValue()) {
+                try {
+                    newPrimary = (IReplica) registry.lookup("Replica " + entry.getKey());
+                    replicaStatus.put(entry.getKey(), true);
+                    System.out.println("Assigned new primary replica: Replica " + entry.getKey());
+
+                    newPrimary.synchroniseState();
+                    break;
+                } catch (Exception e) {
+                    System.err.println("Error assigning primary replica: " + e.getMessage());
+                }
+            }
+        }
+        return newPrimary;
+    }
+
+    //
+    //
+    //
 
     private IReplica getPrimaryReplica() throws RemoteException {
         if (replicaStatus.isEmpty())
