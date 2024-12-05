@@ -3,9 +3,11 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class FrontEnd implements Auction {
-    protected static ArrayList<Integer> replicaIDs = new ArrayList<>();
+    protected static HashMap<Integer, Boolean> replicaStatus = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
         try {
@@ -14,19 +16,13 @@ public class FrontEnd implements Auction {
             Auction stub = (Auction) UnicastRemoteObject.exportObject(frontEnd, 0);
             Registry registry = LocateRegistry.getRegistry("localhost");
             registry.rebind(name, stub);
-
             connectToReplicas();
-
             System.out.println("FrontEnd is ready.");
         } catch (Exception e) {
-            System.err.println("Something went wrong with initliasing FrontEnd:");
+            System.err.println("Something went wrong with initializing FrontEnd:");
             e.printStackTrace();
         }
     }
-
-    // NEED TO ADD STATE SYNC SOMEWHERE HERE
-    // CANNOT HANDLE IF PRIME REP ID 1 GOES DOWN AND COMES BACK, ISSUE WITH TRACKING
-    // PRIME REP STATE
 
     protected static void connectToReplicas() throws RemoteException {
         IReplica currentPrimaryReplica = null;
@@ -41,34 +37,38 @@ public class FrontEnd implements Auction {
                         IReplica rep = (IReplica) registry.lookup(service);
                         int replicaID = rep.getReplicaID();
 
-                        if (!replicaIDs.contains(replicaID))
-                            replicaIDs.add(replicaID);
+                        replicaStatus.putIfAbsent(replicaID, false);
 
-                        if (currentPrimaryReplica == null && replicaIDs.contains(replicaID)) {
+                        if (currentPrimaryReplica == null && !replicaStatus.containsValue(true)) {
                             currentPrimaryReplica = rep;
-                            System.out.println("Primary replica assigned: Replica ID " + replicaID);
+                            replicaStatus.put(replicaID, true);
                         }
 
+                        if (currentPrimaryReplica != null)
+                            currentPrimaryReplica.synchroniseState();
+
                     } catch (Exception e) {
-                        System.err.println("Connection failed");
+                        System.err.println("Connection failed to " + service);
 
                         try {
                             int replicaID = Integer.parseInt(service.replace("Replica ", ""));
-                            replicaIDs.remove((Integer) replicaID);
+                            replicaStatus.remove(replicaID);
 
-                            if (currentPrimaryReplica != null && replicaIDs.indexOf(replicaID) == 0) {
+                            if (currentPrimaryReplica != null && replicaStatus.containsKey(replicaID)
+                                    && replicaStatus.get(replicaID)) {
                                 currentPrimaryReplica = null;
 
-                                if (!replicaIDs.isEmpty()) {
-                                    int newPrimaryID = replicaIDs.get(0);
-                                    try {
-                                        currentPrimaryReplica = (IReplica) registry.lookup("Replica " + newPrimaryID);
-                                        System.out.println("Primary replica reassigned: Replica ID " + newPrimaryID);
-                                    } catch (Exception ex) {
-                                        System.err.println("Error reassigning primary replica: " + ex.getMessage());
+                                for (Map.Entry<Integer, Boolean> entry : replicaStatus.entrySet()) {
+                                    if (!entry.getValue()) {
+                                        try {
+                                            currentPrimaryReplica = (IReplica) registry
+                                                    .lookup("Replica " + entry.getKey());
+                                            replicaStatus.put(entry.getKey(), true);
+                                            break;
+                                        } catch (Exception ex) {
+                                            System.err.println("Error reassigning primary replica: " + ex.getMessage());
+                                        }
                                     }
-                                } else {
-                                    System.err.println("No replicas available to assign as primary.");
                                 }
                             }
                         } catch (NumberFormatException ex) {
@@ -77,31 +77,25 @@ public class FrontEnd implements Auction {
                     }
                 }
             }
-
-            if (currentPrimaryReplica != null) {
-                currentPrimaryReplica.UpdateListInPrimaryReplica(replicaIDs);
-            }
-
-        }
-
-        catch (Exception e) {
+            if (currentPrimaryReplica != null)
+                currentPrimaryReplica.UpdateListInPrimaryReplica((ArrayList<Integer>) replicaStatus.keySet());
+        } catch (Exception e) {
             System.err.println("Error connecting to replicas: " + e.getMessage());
         }
-
-        System.out.println("Updated replica list: " + replicaIDs);
     }
 
     private IReplica getPrimaryReplica() throws RemoteException {
-        if (replicaIDs.isEmpty())
+        if (replicaStatus.isEmpty())
             connectToReplicas();
 
-        if (!replicaIDs.isEmpty()) {
-            try {
-                int primaryID = replicaIDs.get(0);
-                return (IReplica) LocateRegistry.getRegistry("localhost").lookup("Replica " + primaryID);
-            } catch (Exception e) {
-                System.err.println("Error fetching primary replica:");
-                e.printStackTrace();
+        for (Map.Entry<Integer, Boolean> entry : replicaStatus.entrySet()) {
+            if (entry.getValue()) {
+                try {
+                    return (IReplica) LocateRegistry.getRegistry("localhost").lookup("Replica " + entry.getKey());
+                } catch (Exception e) {
+                    System.err.println("Error fetching primary replica:");
+                    e.printStackTrace();
+                }
             }
         }
         throw new RemoteException("No replicas available.");

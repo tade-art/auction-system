@@ -189,5 +189,4 @@ public class Replica implements IReplica {
         this.userIDList = new HashMap<>(userIDList);
         this.currHighestBidder = new HashMap<>(currHighestBidder);
     }
-
 }
